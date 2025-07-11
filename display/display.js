@@ -1,4 +1,3 @@
-const { exec, spawn } = require('child_process');
 const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
 const cron = require('node-cron');
@@ -9,7 +8,6 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 const DATABASE_PATH = process.env.DATABASE_PATH || './data/signage.db';
 
-let firefoxProcess;
 let currentConfig = null;
 let db;
 
@@ -28,32 +26,67 @@ function initializeDatabase() {
     });
 }
 
-function startFirefox(url) {
-    try {
-        console.log('Starting Firefox with URL:', url);
-        
-        if (firefoxProcess) {
-            firefoxProcess.kill();
+function generateDisplayHTML(config) {
+    if (config.display_mode === 'single') {
+        return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Signage</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { height: 100vh; overflow: hidden; background: #000; }
+        iframe { 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            display: block;
         }
-        
-        firefoxProcess = spawn('firefox-esr', [
-            '--display=:99',
-            '--kiosk',
-            '--private-window',
-            '--no-remote',
-            '--new-instance',
-            url
-        ]);
-
-        firefoxProcess.on('error', (error) => {
-            console.error('Firefox process error:', error);
-        });
-
-        console.log('Firefox started successfully');
-        return true;
-    } catch (error) {
-        console.error('Failed to start Firefox:', error);
-        return false;
+    </style>
+</head>
+<body>
+    <iframe src="${config.primary_url}" frameborder="0" allowfullscreen></iframe>
+    <script>
+        setTimeout(() => location.reload(), ${(config.refresh_interval || 300) * 1000});
+    </script>
+</body>
+</html>`;
+    } else if (config.display_mode.includes('split')) {
+        return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Signage - Split Screen</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { height: 100vh; overflow: hidden; background: #000; }
+        .container { 
+            width: 100%; 
+            height: 100%; 
+            display: flex; 
+            ${config.display_mode === 'split-horizontal' ? 'flex-direction: row;' : 'flex-direction: column;'}
+        }
+        .frame { 
+            flex: 1; 
+            border: none; 
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <iframe class="frame" src="${config.primary_url}" frameborder="0" allowfullscreen></iframe>
+        <iframe class="frame" src="${config.secondary_url}" frameborder="0" allowfullscreen></iframe>
+    </div>
+    <script>
+        setTimeout(() => location.reload(), ${(config.refresh_interval || 300) * 1000});
+    </script>
+</body>
+</html>`;
     }
 }
 
@@ -77,56 +110,6 @@ async function getCurrentConfig() {
 }
 
 
-function displaySinglePage(config) {
-    try {
-        console.log(`Displaying single page: ${config.primary_url}`);
-        startFirefox(config.primary_url);
-        console.log('Single page display completed');
-    } catch (error) {
-        console.error('Error displaying single page:', error);
-    }
-}
-
-function displaySplitScreen(config) {
-    try {
-        console.log(`Displaying split screen: ${config.display_mode}`);
-        
-        const html = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { height: 100vh; overflow: hidden; }
-                .container { 
-                    width: 100%; 
-                    height: 100%; 
-                    display: flex; 
-                    ${config.display_mode === 'split-horizontal' ? 'flex-direction: row;' : 'flex-direction: column;'}
-                }
-                .frame { 
-                    flex: 1; 
-                    border: none; 
-                    outline: none;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <iframe class="frame" src="${config.primary_url}"></iframe>
-                <iframe class="frame" src="${config.secondary_url}"></iframe>
-            </div>
-        </body>
-        </html>
-        `;
-
-        fs.writeFileSync('/tmp/split.html', html);
-        startFirefox(`file:///tmp/split.html`);
-        console.log('Split screen display completed');
-    } catch (error) {
-        console.error('Error displaying split screen:', error);
-    }
-}
 
 async function updateDisplay() {
     try {
@@ -143,12 +126,6 @@ async function updateDisplay() {
 
         console.log('Updating display with new configuration:', config);
         currentConfig = config;
-
-        if (config.display_mode === 'single') {
-            displaySinglePage(config);
-        } else if (config.display_mode.includes('split')) {
-            displaySplitScreen(config);
-        }
 
         console.log('Display update completed');
     } catch (error) {
@@ -169,6 +146,21 @@ async function startDisplaySystem() {
 
     console.log('Display system started successfully');
 }
+
+// Display endpoint - main signage page
+app.get('/', async (req, res) => {
+    try {
+        const config = await getCurrentConfig();
+        if (!config) {
+            return res.send('<h1>No configuration found</h1>');
+        }
+        
+        const html = generateDisplayHTML(config);
+        res.send(html);
+    } catch (error) {
+        res.status(500).send('<h1>Error loading configuration</h1>');
+    }
+});
 
 app.get('/api/status', (req, res) => {
     res.json({ 
@@ -193,9 +185,6 @@ app.listen(PORT, () => {
 
 process.on('SIGINT', async () => {
     console.log('Shutting down display system...');
-    if (firefoxProcess) {
-        firefoxProcess.kill();
-    }
     if (db) {
         db.close();
     }
