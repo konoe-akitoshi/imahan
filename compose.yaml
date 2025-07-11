@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  signage-manager:
+    build: ./manager
+    container_name: signage-manager
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./shared:/app/shared
+      - signage-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - DATABASE_PATH=/app/data/signage.db
+    depends_on:
+      - signage-db
+    restart: unless-stopped
+
+  signage-display:
+    build: ./display
+    container_name: signage-display
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./shared:/app/shared
+      - signage-data:/app/data
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    environment:
+      - DISPLAY=:0
+      - DATABASE_PATH=/app/data/signage.db
+    depends_on:
+      - signage-manager
+    restart: unless-stopped
+    privileged: true
+
+  signage-db:
+    image: alpine:latest
+    container_name: signage-db
+    volumes:
+      - signage-data:/data
+    command: sleep infinity
+    restart: unless-stopped
+
+volumes:
+  signage-data:
+    driver: local
