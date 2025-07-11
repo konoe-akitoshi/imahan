@@ -32,4 +32,4 @@ fluxbox &\n\
 sleep 2\n\
 node display.js' > /app/start.sh && chmod +x /app/start.sh
 
-CMD ["/app/start.sh"]
+CMD ["sh", "/app/start.sh"]
