@@ -27,8 +27,7 @@ EXPOSE 8080
 
 # Create startup script
 RUN echo '#!/bin/sh\n\
-Xvfb :0 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &\n\
-fluxbox &\n\
+Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset &\n\
 sleep 2\n\
 node display.js' > /app/start.sh && chmod +x /app/start.sh
 

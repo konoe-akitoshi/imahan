@@ -24,14 +24,12 @@ services:
     volumes:
       - ./shared:/app/shared
       - signage-data:/app/data
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
-      - DISPLAY=:0
+      - DISPLAY=:99
       - DATABASE_PATH=/app/data/signage.db
     depends_on:
       - signage-manager
     restart: unless-stopped
-    privileged: true
 
   signage-db:
     image: alpine:latest
